@@ -7,10 +7,10 @@ export class Withdraw {
   @PrimaryGeneratedColumn({ name: "withdraw_id" })
   withdraw_id!: number;
 
-  @ManyToOne(() => Wallet)
+  @ManyToOne(() => Wallet, wallet => wallet.withdraws, { onDelete: "CASCADE" })
   wallet!: Wallet;
 
-  @ManyToOne(() => AgencyPersonal)
+  @ManyToOne(() => AgencyPersonal, ap => ap.withdraws, { onDelete: "CASCADE" })
   agency_personal!: AgencyPersonal;
 
   @Column({ type: "float" })
@@ -19,11 +19,9 @@ export class Withdraw {
   @Column({ type: "enum", enum: ["success", "pending", "failed"], default: "pending" })
   status!: string;
 
-  // ✅ Numéro du client (obligatoire)
   @Column({ name: "client_phone", length: 20 })
   clientPhone!: string;
 
-  // ✅ Nom du client (optionnel)
   @Column({ name: "client_name", nullable: true })
   clientName?: string;
 

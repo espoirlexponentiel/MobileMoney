@@ -7,10 +7,10 @@ export class Deposit {
   @PrimaryGeneratedColumn({ name: "deposit_id" })
   deposit_id!: number;
 
-  @ManyToOne(() => Wallet)
+  @ManyToOne(() => Wallet, wallet => wallet.deposits, { onDelete: "CASCADE" })
   wallet!: Wallet;
 
-  @ManyToOne(() => AgencyPersonal)
+  @ManyToOne(() => AgencyPersonal, ap => ap.deposits, { onDelete: "CASCADE" })
   agency_personal!: AgencyPersonal;
 
   @Column({ type: "float" })
@@ -19,11 +19,9 @@ export class Deposit {
   @Column({ type: "enum", enum: ["success", "pending", "failed"], default: "pending" })
   status!: string;
 
-  // ✅ Numéro du client (obligatoire)
   @Column({ name: "client_phone", length: 20 })
   clientPhone!: string;
 
-  // ✅ Nom du client (optionnel)
   @Column({ name: "client_name", nullable: true })
   clientName?: string;
 

@@ -14,6 +14,10 @@ import networkRoutes from "./routes/admin/networks";
 import managerBusinessRoutes from "./routes/manager/business";
 import managerAgenciesRoutes from "./routes/manager/agencies";
 import managerPersonalsRoutes from "./routes/manager/personals";
+import managerWalletsRoutes from "./routes/manager/wallets"; // ✅ ajouté
+
+// --- Personal routes
+import personalTransactionsRoutes from "./routes/personal/transactions"; // ✅ ajouté
 
 const app = express();
 
@@ -41,6 +45,10 @@ AppDataSource.initialize()
     app.use("/manager/business", managerBusinessRoutes);
     app.use("/manager/agencies", managerAgenciesRoutes);
     app.use("/manager/personals", managerPersonalsRoutes);
+    app.use("/manager/wallets", managerWalletsRoutes); // ✅ nouveau
+
+    // --- Personal
+    app.use("/personal/transactions", personalTransactionsRoutes); // ✅ nouveau
 
     // ✅ Lancement du serveur
     app.listen(PORT, () => {
