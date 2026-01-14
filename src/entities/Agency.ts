@@ -3,6 +3,7 @@ import { Business } from "./Business";
 import { Country } from "./Country";
 import { Wallet } from "./Wallet";
 import { Manager } from "./Manager";
+import { AgencyPersonal } from "./AgencyPersonal";
 
 @Entity("agencies")
 export class Agency {
@@ -12,22 +13,22 @@ export class Agency {
   @Column()
   name!: string;
 
-  // ✅ Lien vers le business auquel appartient l’agence
   @ManyToOne(() => Business, business => business.agencies)
   business!: Business;
 
-  // ✅ Lien vers le pays où l’agence est créée
   @ManyToOne(() => Country, country => country.agencies)
   country!: Country;
 
-  // ✅ Lien vers le manager qui a créé l’agence
   @ManyToOne(() => Manager, manager => manager.agencies)
   manager!: Manager;
 
-  // ✅ Les wallets générés automatiquement pour chaque network du country
   @OneToMany(() => Wallet, wallet => wallet.agency)
   wallets!: Wallet[];
 
+  // ✅ Relation pivot avec les agents
+  @OneToMany(() => AgencyPersonal, agencyPersonal => agencyPersonal.agency)
+  agencyPersonals!: AgencyPersonal[];
+
   @CreateDateColumn()
-    created_at!: Date;
+  created_at!: Date;
 }
