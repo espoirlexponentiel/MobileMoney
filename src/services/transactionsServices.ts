@@ -4,40 +4,91 @@ import { Withdraw } from "../entities/Withdraw";
 import { Transaction } from "../entities/Transaction";
 import { Wallet } from "../entities/Wallet";
 import { AgencyPersonal } from "../entities/AgencyPersonal";
+import { UserRole } from "../types/auth";
+
+interface DepositPayload {
+  walletId: number;
+  amount: number;
+  clientPhone: string;
+  clientName?: string;
+}
+
+interface WithdrawPayload {
+  walletId: number;
+  amount: number;
+  clientPhone: string;
+  clientName?: string;
+}
+
+interface TopupPayload {
+  walletId: number;
+  amount: number;
+  secretCode?: number;
+}
+
+interface AuthUser {
+  id: number;
+  role: UserRole;
+}
 
 export const TransactionsService = {
-  // ✅ Dépôt (agent → client)
-  async createDeposit({ walletId, agencyPersonalId, amount, clientPhone, clientName }: any) {
+  // ======================================================
+  // 🔹 DEPOT (personal → client)
+  // ======================================================
+  async createDeposit(payload: DepositPayload, user: AuthUser) {
+    if (user.role !== "personal") {
+      throw new Error("Seul un personal peut effectuer un dépôt");
+    }
+
+    const { walletId, amount, clientPhone, clientName } = payload;
+
+    if (amount <= 0) throw new Error("Montant invalide");
+
     const walletRepo = AppDataSource.getRepository(Wallet);
+    const apRepo = AppDataSource.getRepository(AgencyPersonal);
     const depositRepo = AppDataSource.getRepository(Deposit);
     const transactionRepo = AppDataSource.getRepository(Transaction);
-    const apRepo = AppDataSource.getRepository(AgencyPersonal);
 
+    // 🔹 Wallet + agence + réseau
     const wallet = await walletRepo.findOne({
       where: { wallet_id: walletId },
-      relations: ["network"],
+      relations: ["agency", "network"],
     });
     if (!wallet) throw new Error("Wallet introuvable");
 
-    const agencyPersonal = await apRepo.findOneByOrFail({ id: agencyPersonalId });
+    // 🔹 Vérifier que le personal appartient à l'agence du wallet
+    const agencyPersonal = await apRepo.findOne({
+      where: {
+        personal: { personal_id: user.id },
+        agency: { agency_id: wallet.agency.agency_id },
+      },
+      relations: ["agency", "personal"],
+    });
 
-    if (wallet.balance < amount) throw new Error("Solde insuffisant");
+    if (!agencyPersonal) {
+      throw new Error("Personal non lié à l'agence du wallet");
+    }
 
-    // ✅ Décrémenter le solde
+    if (wallet.balance < amount) {
+      throw new Error("Solde insuffisant");
+    }
+
+    // 🔹 Mise à jour du solde
     wallet.balance -= amount;
     await walletRepo.save(wallet);
 
-    // ✅ Générer le code USSD selon le réseau
-    let ussdCode: string | undefined;
-    const networkName = wallet.network.name.toLowerCase();
+    // 🔹 Génération USSD
+    const secretStr = wallet.secretCode?.toString() ?? "0000";
+    const network = wallet.network.name.toLowerCase();
 
-    if (networkName === "yas") {
-      ussdCode = `*145*1*${amount}*${clientPhone}*${wallet.secretCode}#`;
-    } else if (networkName === "moov africa") {
-      ussdCode = `*152*1*1*${clientPhone}*${amount}*${wallet.secretCode}#`;
+    let ussdCode: string | undefined;
+    if (network === "yas") {
+      ussdCode = `*145*1*${amount}*${clientPhone}*${secretStr}#`;
+    } else if (network === "moov africa") {
+      ussdCode = `*152*1*1*${clientPhone}*${amount}*${secretStr}#`;
     }
 
-    // ✅ Créer le dépôt
+    // 🔹 Dépôt
     const deposit = depositRepo.create({
       wallet,
       agency_personal: agencyPersonal,
@@ -48,7 +99,7 @@ export const TransactionsService = {
     });
     await depositRepo.save(deposit);
 
-    // ✅ Créer la transaction
+    // 🔹 Transaction
     const transaction = transactionRepo.create({
       wallet,
       agency_personal: agencyPersonal,
@@ -64,36 +115,54 @@ export const TransactionsService = {
     return { deposit, transaction, wallet };
   },
 
-  // ✅ Retrait (client → agent)
-  async createWithdraw({ walletId, agencyPersonalId, amount, clientPhone, clientName }: any) {
+  // ======================================================
+  // 🔹 RETRAIT (client → personal)
+  // ======================================================
+  async createWithdraw(payload: WithdrawPayload, user: AuthUser) {
+    if (user.role !== "personal") {
+      throw new Error("Seul un personal peut effectuer un retrait");
+    }
+
+    const { walletId, amount, clientPhone, clientName } = payload;
+    if (amount <= 0) throw new Error("Montant invalide");
+
     const walletRepo = AppDataSource.getRepository(Wallet);
+    const apRepo = AppDataSource.getRepository(AgencyPersonal);
     const withdrawRepo = AppDataSource.getRepository(Withdraw);
     const transactionRepo = AppDataSource.getRepository(Transaction);
-    const apRepo = AppDataSource.getRepository(AgencyPersonal);
 
     const wallet = await walletRepo.findOne({
       where: { wallet_id: walletId },
-      relations: ["network"],
+      relations: ["agency", "network"],
     });
     if (!wallet) throw new Error("Wallet introuvable");
 
-    const agencyPersonal = await apRepo.findOneByOrFail({ id: agencyPersonalId });
+    const agencyPersonal = await apRepo.findOne({
+      where: {
+        personal: { personal_id: user.id },
+        agency: { agency_id: wallet.agency.agency_id },
+      },
+      relations: ["agency", "personal"],
+    });
 
-    // ✅ Incrémenter le solde
+    if (!agencyPersonal) {
+      throw new Error("Personal non lié à l'agence du wallet");
+    }
+
     wallet.balance += amount;
     await walletRepo.save(wallet);
 
-    // ✅ Générer le code USSD selon le réseau
-    let ussdCode: string | undefined;
-    const networkName = wallet.network.name.toLowerCase();
+    // 🔹 USSD
+    const secretStr = wallet.secretCode?.toString() ?? "0000";
+    const network = wallet.network.name.toLowerCase();
 
-    if (networkName === "moov africa") {
-      ussdCode = `*152*2*1*${clientPhone}*${amount}*${wallet.secretCode}#`;
-    } else if (networkName === "yas") {
-      ussdCode = `YAS-RETRAIT: ${clientPhone} / ${amount}`;
+    let ussdCode: string | undefined;
+    if (network === "moov africa") {
+      ussdCode = `*152*2*1*${clientPhone}*${amount}*${secretStr}#`;
+    } else if (network === "yas") {
+      ussdCode = `YAS-RETRAIT: ${clientPhone} / ${amount} / ${secretStr}`;
     }
 
-    // ✅ Créer le retrait
     const withdraw = withdrawRepo.create({
       wallet,
       agency_personal: agencyPersonal,
@@ -104,7 +173,6 @@ export const TransactionsService = {
     });
     await withdrawRepo.save(withdraw);
 
-    // ✅ Créer la transaction
     const transaction = transactionRepo.create({
       wallet,
       agency_personal: agencyPersonal,
@@ -120,31 +188,40 @@ export const TransactionsService = {
     return { withdraw, transaction, wallet };
   },
 
-  // ✅ Ravitaillement (manager → wallet)
-  async createTopup({ walletId, managerId, amount, secretCode }: any) {
+  // ======================================================
+  // 🔹 TOPUP (manager → wallet)
+  // ======================================================
+  async createTopup(payload: TopupPayload, user: AuthUser) {
+    if (user.role !== "manager") {
+      throw new Error("Seul un manager peut effectuer un topup");
+    }
+
+    const { walletId, amount, secretCode } = payload;
+    if (amount <= 0) throw new Error("Montant invalide");
+
     const walletRepo = AppDataSource.getRepository(Wallet);
     const transactionRepo = AppDataSource.getRepository(Transaction);
 
     const wallet = await walletRepo.findOne({
       where: { wallet_id: walletId },
-      relations: ["network"],
+      relations: ["agency", "agency.manager", "network"],
     });
     if (!wallet) throw new Error("Wallet introuvable");
 
-    // ✅ Incrémenter le solde
-    wallet.balance += amount;
-
-    // ✅ Mettre à jour le code secret si fourni
-    if (secretCode) {
-      wallet.secretCode = secretCode;
+    // 🔹 Vérification du manager propriétaire
+    if (wallet.agency.manager.manager_id !== user.id) {
+      throw new Error("Manager non autorisé sur ce wallet");
     }
 
+    wallet.balance += amount;
+    if (secretCode !== undefined) {
+      wallet.secretCode = secretCode;
+    }
     await walletRepo.save(wallet);
 
-    // ✅ Générer un code USSD fictif pour audit
-    const ussdCode = `TOPUP-${wallet.network.name}-${amount}-${wallet.secretCode}`;
+    const secretStr = wallet.secretCode?.toString() ?? "0000";
+    const ussdCode = `TOPUP-${wallet.network.name}-${amount}-${secretStr}`;
 
-    // ✅ Créer la transaction
     const transaction = transactionRepo.create({
       wallet,
       amount,
@@ -159,11 +236,22 @@ export const TransactionsService = {
     return { transaction, wallet };
   },
 
-  // ✅ Historique des transactions d’un agent
-  async getPersonalTransactions(agencyPersonalId: number) {
+  // ======================================================
+  // 🔹 HISTORIQUE DU PERSONAL
+  // ======================================================
+  async getPersonalTransactions(user: AuthUser) {
+    if (user.role !== "personal") {
+      throw new Error("Seul un personal peut consulter son historique");
+    }
+
     const transactionRepo = AppDataSource.getRepository(Transaction);
+
     return transactionRepo.find({
-      where: { agency_personal: { id: agencyPersonalId } },
+      where: {
+        agency_personal: {
+          personal: { personal_id: user.id },
+        },
+      },
       relations: ["wallet"],
       order: { created_at: "DESC" },
     });

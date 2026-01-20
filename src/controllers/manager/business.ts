@@ -1,43 +1,74 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { BusinessService } from "../../services/businessServices";
+import { AuthRequest } from "../../middleware/authRequest";
+
+// Types pour ton body et params
+interface CreateBusinessBody {
+  name: string;
+}
+
+interface UpdateBusinessBody {
+  name?: string;
+}
+
+interface BusinessParams {
+  id: string;
+}
 
 export const BusinessController = {
-  async create(req: Request, res: Response) {
+  // ✅ Créer un business
+  async create(req: AuthRequest<CreateBusinessBody>, res: Response) {
     try {
-      const { name, managerId } = req.body;
-      const business = await BusinessService.createBusiness(name, managerId);
+      if (!req.user) return res.status(401).json({ error: "Utilisateur non authentifié" });
+
+      const { name } = req.body;
+
+      // ✅ Utilise le manager connecté via req.user.id
+      const business = await BusinessService.createBusiness(name, req.user.id);
       res.status(201).json(business);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
   },
 
-  async getAll(req: Request, res: Response) {
+  // ✅ Récupérer tous les business
+  async getAll(req: AuthRequest, res: Response) {
     const businesses = await BusinessService.getAllBusinesses();
     res.json(businesses);
   },
 
-  async getOne(req: Request, res: Response) {
-    const business = await BusinessService.getBusinessById(Number(req.params.id));
-    if (!business) return res.status(404).json({ error: "Business introuvable" });
+  // ✅ Récupérer un business par ID
+  async getOne(req: AuthRequest<any, BusinessParams>, res: Response) {
+    const businessId = Number(req.params.id);
+    if (isNaN(businessId)) return res.status(400).json({ error: "ID invalide" });
+
+    const business = await BusinessService.getBusinessById(businessId);
     res.json(business);
   },
 
-  async update(req: Request, res: Response) {
+  // ✅ Modifier un business
+  async update(req: AuthRequest<UpdateBusinessBody, BusinessParams>, res: Response) {
     try {
-      const business = await BusinessService.updateBusiness(Number(req.params.id), req.body);
+      const businessId = Number(req.params.id);
+      if (isNaN(businessId)) return res.status(400).json({ error: "ID invalide" });
+
+      const business = await BusinessService.updateBusiness(businessId, req.body);
       res.json(business);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
   },
 
-  async delete(req: Request, res: Response) {
+  // ✅ Supprimer un business
+  async delete(req: AuthRequest<{}, BusinessParams>, res: Response) {
     try {
-      const result = await BusinessService.deleteBusiness(Number(req.params.id));
+      const businessId = Number(req.params.id);
+      if (isNaN(businessId)) return res.status(400).json({ error: "ID invalide" });
+
+      const result = await BusinessService.deleteBusiness(businessId);
       res.json(result);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
-  }
+  },
 };

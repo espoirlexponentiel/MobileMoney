@@ -1,56 +1,102 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { TransactionsService } from "../../services/transactionsServices";
+import { AuthRequest } from "../../middleware/authRequest";
 
+interface DepositBody {
+  walletId: number;
+  amount: number;
+  clientPhone: string;
+  clientName?: string;
+}
+
+interface WithdrawBody {
+  walletId: number;
+  amount: number;
+  clientPhone: string;
+  clientName?: string;
+}
 
 export const PersonalTransactionsController = {
-  // ✅ Dépôt (agent → client)
-  async deposit(req: Request, res: Response) {
+  // =========================
+  // ✅ DEPOT
+  // =========================
+  async deposit(req: AuthRequest<DepositBody>, res: Response) {
     try {
-      const { walletId, agencyPersonalId, amount, clientPhone, clientName } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ error: "Utilisateur non authentifié" });
+      }
 
-      const result = await TransactionsService.createDeposit({
-        walletId,
-        agencyPersonalId,
-        amount,
-        clientPhone,
-        clientName,
-      });
+      const { walletId, amount, clientPhone, clientName } = req.body;
 
-      res.status(201).json(result);
+      if (
+        !walletId ||
+        typeof amount !== "number" ||
+        amount <= 0 ||
+        !clientPhone
+      ) {
+        return res.status(400).json({
+          error: "walletId, amount (>0) et clientPhone sont requis",
+        });
+      }
+
+      const result = await TransactionsService.createDeposit(
+        { walletId, amount, clientPhone, clientName },
+        req.user
+      );
+
+      return res.status(201).json(result);
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      return res.status(400).json({ error: err.message });
     }
   },
 
-  // ✅ Retrait (client → agent)
-  async withdraw(req: Request, res: Response) {
+  // =========================
+  // ✅ RETRAIT
+  // =========================
+  async withdraw(req: AuthRequest<WithdrawBody>, res: Response) {
     try {
-      const { walletId, agencyPersonalId, amount, clientPhone, clientName } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ error: "Utilisateur non authentifié" });
+      }
 
-      const result = await TransactionsService.createWithdraw({
-        walletId,
-        agencyPersonalId,
-        amount,
-        clientPhone,
-        clientName,
-      });
+      const { walletId, amount, clientPhone, clientName } = req.body;
 
-      res.status(201).json(result);
+      if (
+        !walletId ||
+        typeof amount !== "number" ||
+        amount <= 0 ||
+        !clientPhone
+      ) {
+        return res.status(400).json({
+          error: "walletId, amount (>0) et clientPhone sont requis",
+        });
+      }
+
+      const result = await TransactionsService.createWithdraw(
+        { walletId, amount, clientPhone, clientName },
+        req.user
+      );
+
+      return res.status(201).json(result);
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      return res.status(400).json({ error: err.message });
     }
   },
 
-  // ✅ Historique des transactions de l’agent
-  async history(req: Request, res: Response) {
+  // =========================
+  // ✅ HISTORIQUE PERSONAL
+  // =========================
+  async history(req: AuthRequest, res: Response) {
     try {
-      const { agencyPersonalId } = req.body;
+      if (!req.user) {
+        return res.status(401).json({ error: "Utilisateur non authentifié" });
+      }
 
-      const result = await TransactionsService.getPersonalTransactions(agencyPersonalId);
+      const result = await TransactionsService.getPersonalTransactions(req.user);
 
-      res.json(result);
+      return res.status(200).json(result);
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      return res.status(400).json({ error: err.message });
     }
   },
 };

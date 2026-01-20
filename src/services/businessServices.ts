@@ -3,52 +3,79 @@ import { Business } from "../entities/Business";
 import { Manager } from "../entities/Manager";
 
 export const BusinessService = {
-  // ✅ Créer un business
-  async createBusiness(name: string, managerId: number) {
+  /**
+   * Créer un business et l'affecter au manager connecté
+   */
+  async createBusiness(name: string, userId: number) {
     const managerRepo = AppDataSource.getRepository(Manager);
     const businessRepo = AppDataSource.getRepository(Business);
 
-    const manager = await managerRepo.findOneBy({ manager_id: managerId });
+    // Cherche le manager via la relation User
+    const manager = await managerRepo.findOne({
+      where: { user: { user_id: userId } },
+    });
     if (!manager) throw new Error("Manager introuvable");
 
     const business = businessRepo.create({ name, manager });
     await businessRepo.save(business);
 
-    return await businessRepo.findOne({
+    // Retour complet avec relations
+    return businessRepo.findOne({
       where: { business_id: business.business_id },
-      relations: ["manager", "agencies"]
+      relations: ["manager", "agencies"],
     });
   },
 
-  // ✅ Récupérer tous les businesses
+  /**
+   * Récupérer tous les business
+   */
   async getAllBusinesses() {
-    const repo = AppDataSource.getRepository(Business);
-    return repo.find({ relations: ["manager", "agencies"] });
+    const businessRepo = AppDataSource.getRepository(Business);
+    return businessRepo.find({ relations: ["manager", "agencies"] });
   },
 
-  // ✅ Récupérer un business par ID
+  /**
+   * Récupérer un business par son ID
+   */
   async getBusinessById(id: number) {
-    const repo = AppDataSource.getRepository(Business);
-    return repo.findOne({
+    const businessRepo = AppDataSource.getRepository(Business);
+    const business = await businessRepo.findOne({
       where: { business_id: id },
-      relations: ["manager", "agencies"]
+      relations: ["manager", "agencies"],
     });
+
+    if (!business) throw new Error("Business introuvable");
+    return business;
   },
 
-  // ✅ Modifier un business
+  /**
+   * Modifier un business
+   */
   async updateBusiness(id: number, data: Partial<Business>) {
-    const repo = AppDataSource.getRepository(Business);
-    await repo.update(id, data);
-    return repo.findOne({
+    const businessRepo = AppDataSource.getRepository(Business);
+    const business = await businessRepo.findOne({ where: { business_id: id } });
+
+    if (!business) throw new Error("Business introuvable");
+
+    businessRepo.merge(business, data);
+    await businessRepo.save(business);
+
+    return businessRepo.findOne({
       where: { business_id: id },
-      relations: ["manager", "agencies"]
+      relations: ["manager", "agencies"],
     });
   },
 
-  // ✅ Supprimer un business
+  /**
+   * Supprimer un business
+   */
   async deleteBusiness(id: number) {
-    const repo = AppDataSource.getRepository(Business);
-    await repo.delete(id);
+    const businessRepo = AppDataSource.getRepository(Business);
+    const business = await businessRepo.findOne({ where: { business_id: id } });
+
+    if (!business) throw new Error("Business introuvable");
+
+    await businessRepo.remove(business);
     return { message: "Business supprimé" };
-  }
+  },
 };

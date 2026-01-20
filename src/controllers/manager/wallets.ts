@@ -1,24 +1,52 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { TransactionsService } from "../../services/transactionsServices";
+import { AuthRequest } from "../../middleware/authRequest";
+import { UserRole } from "../../types/auth";
+
+interface TopupBody {
+  walletId: number;
+  amount: number;
+  secretCode?: number;
+}
 
 export const ManagerWalletsController = {
-  // ✅ Ravitaillement d’un wallet par le manager (avec mise à jour du code secret)
-  async topup(req: Request, res: Response) {
+  async topup(req: AuthRequest<TopupBody>, res: Response) {
     try {
-      const { walletId, managerId, amount, secretCode } = req.body;
+      // 🔐 Vérification auth
+      if (!req.user) {
+        return res.status(401).json({ error: "Utilisateur non authentifié" });
+      }
 
-      const result = await TransactionsService.createTopup({
-        walletId,
-        managerId,
-        amount,
-        secretCode,
-      });
+      const userRole: UserRole = req.user.role;
 
-      res.status(201).json(result);
+      // 🔐 Vérification rôle
+      if (userRole !== "manager") {
+        return res.status(403).json({
+          error: "Accès réservé au manager",
+        });
+      }
+
+      const { walletId, amount, secretCode } = req.body;
+
+      // ✅ Validation du body
+      if (!walletId || !amount || amount <= 0) {
+        return res.status(400).json({
+          error: "walletId et amount (> 0) sont requis",
+        });
+      }
+
+      // ✅ Appel service avec AuthUser correct
+      const result = await TransactionsService.createTopup(
+        { walletId, amount, secretCode },
+        {
+          id: req.user.id,
+          role: userRole,
+        }
+      );
+
+      return res.status(201).json(result);
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      return res.status(400).json({ error: err.message });
     }
-  },}
-
-  // ✅ (Optionnel) Historique des transactions d’un wallet géré par le manager
-  
+  },
+};

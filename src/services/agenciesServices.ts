@@ -7,8 +7,16 @@ import { Wallet } from "../entities/Wallet";
 import { Network } from "../entities/Network";
 
 export const AgenciesService = {
-  // ✅ Créer une agence avec wallets liés au business
-  async createAgency(name: string, businessId: number, countryId: number, managerId: number) {
+  /**
+   * Créer une agence avec wallets liés au business et aux networks
+   * ✅ Utilise le manager connecté
+   */
+  async createAgency(
+    name: string,
+    businessId: number,
+    countryId: number,
+    managerUserId: number
+  ) {
     const businessRepo = AppDataSource.getRepository(Business);
     const countryRepo = AppDataSource.getRepository(Country);
     const managerRepo = AppDataSource.getRepository(Manager);
@@ -16,63 +24,125 @@ export const AgenciesService = {
     const walletRepo = AppDataSource.getRepository(Wallet);
     const networkRepo = AppDataSource.getRepository(Network);
 
-    const business = await businessRepo.findOneBy({ business_id: businessId });
-    const country = await countryRepo.findOne({ where: { country_id: countryId }, relations: ["networks"] });
-    const manager = await managerRepo.findOneBy({ manager_id: managerId });
+    // Récupérer le manager connecté
+    const manager = await managerRepo.findOne({
+      where: { user: { user_id: managerUserId } },
+    });
+    if (!manager) throw new Error("Manager introuvable");
 
-    if (!business || !country || !manager) throw new Error("Business, Country ou Manager introuvable");
+    // Vérifier que le business appartient à ce manager
+    const business = await businessRepo.findOne({
+      where: { business_id: businessId, manager: { manager_id: manager.manager_id } },
+    });
+    if (!business) throw new Error("Le business n'existe pas ou ne vous appartient pas");
+
+    // Récupérer le pays
+    const country = await countryRepo.findOne({
+      where: { country_id: countryId },
+      relations: ["networks"],
+    });
+    if (!country) throw new Error("Country introuvable");
 
     // ✅ Création de l’agence
     const agency = agencyRepo.create({ name, business, country, manager });
     await agencyRepo.save(agency);
 
-    // ✅ Création des wallets liés à l’agence ET au business
+    // ✅ Création des wallets liés à l’agence et au business
     const networks = await networkRepo.find({ where: { country: { country_id: countryId } } });
-    const wallets = networks.map(network =>
+    const wallets = networks.map((network) =>
       walletRepo.create({
         balance: 0,
         agency,
-        business,   // ✅ lien direct avec le business
-        network
+        business,
+        network,
       })
     );
     await walletRepo.save(wallets);
 
-    return await agencyRepo.findOne({
+    return agencyRepo.findOne({
       where: { agency_id: agency.agency_id },
-      relations: ["wallets", "wallets.network", "wallets.business", "business", "country", "manager"]
+      relations: [
+        "wallets",
+        "wallets.network",
+        "wallets.business",
+        "business",
+        "country",
+        "manager",
+      ],
     });
   },
 
-  // ✅ Récupérer toutes les agences
+  /**
+   * Récupérer toutes les agences
+   */
   async getAllAgencies() {
-    const repo = AppDataSource.getRepository(Agency);
-    return repo.find({ relations: ["wallets", "wallets.network", "wallets.business", "business", "country", "manager"] });
+    const agencyRepo = AppDataSource.getRepository(Agency);
+    return agencyRepo.find({
+      relations: [
+        "wallets",
+        "wallets.network",
+        "wallets.business",
+        "business",
+        "country",
+        "manager",
+      ],
+    });
   },
 
-  // ✅ Récupérer une agence par ID
+  /**
+   * Récupérer une agence par ID
+   */
   async getAgencyById(id: number) {
-    const repo = AppDataSource.getRepository(Agency);
-    return repo.findOne({
+    const agencyRepo = AppDataSource.getRepository(Agency);
+    const agency = await agencyRepo.findOne({
       where: { agency_id: id },
-      relations: ["wallets", "wallets.network", "wallets.business", "business", "country", "manager"]
+      relations: [
+        "wallets",
+        "wallets.network",
+        "wallets.business",
+        "business",
+        "country",
+        "manager",
+      ],
     });
+
+    if (!agency) throw new Error("Agence introuvable");
+    return agency;
   },
 
-  // ✅ Modifier une agence
+  /**
+   * Modifier une agence
+   */
   async updateAgency(id: number, data: Partial<Agency>) {
-    const repo = AppDataSource.getRepository(Agency);
-    await repo.update(id, data);
-    return repo.findOne({
+    const agencyRepo = AppDataSource.getRepository(Agency);
+    const agency = await agencyRepo.findOne({ where: { agency_id: id } });
+    if (!agency) throw new Error("Agence introuvable");
+
+    agencyRepo.merge(agency, data);
+    await agencyRepo.save(agency);
+
+    return agencyRepo.findOne({
       where: { agency_id: id },
-      relations: ["wallets", "wallets.network", "wallets.business", "business", "country", "manager"]
+      relations: [
+        "wallets",
+        "wallets.network",
+        "wallets.business",
+        "business",
+        "country",
+        "manager",
+      ],
     });
   },
 
-  // ✅ Supprimer une agence
+  /**
+   * Supprimer une agence
+   */
   async deleteAgency(id: number) {
-    const repo = AppDataSource.getRepository(Agency);
-    await repo.delete(id);
+    const agencyRepo = AppDataSource.getRepository(Agency);
+    const agency = await agencyRepo.findOne({ where: { agency_id: id } });
+    if (!agency) throw new Error("Agence introuvable");
+
+    await agencyRepo.remove(agency);
     return { message: "Agence supprimée" };
-  }
+  },
 };
