@@ -4,6 +4,8 @@ import { Withdraw } from "../entities/Withdraw";
 import { Transaction } from "../entities/Transaction";
 import { Wallet } from "../entities/Wallet";
 import { AgencyPersonal } from "../entities/AgencyPersonal";
+import { Personal } from "../entities/Personal";
+import { Manager } from "../entities/Manager";
 import { UserRole } from "../types/auth";
 
 interface DepositPayload {
@@ -27,7 +29,7 @@ interface TopupPayload {
 }
 
 interface AuthUser {
-  id: number;
+  id: number; // correspond au user_id
   role: UserRole;
 }
 
@@ -41,43 +43,41 @@ export const TransactionsService = {
     }
 
     const { walletId, amount, clientPhone, clientName } = payload;
-
     if (amount <= 0) throw new Error("Montant invalide");
 
     const walletRepo = AppDataSource.getRepository(Wallet);
     const apRepo = AppDataSource.getRepository(AgencyPersonal);
     const depositRepo = AppDataSource.getRepository(Deposit);
     const transactionRepo = AppDataSource.getRepository(Transaction);
+    const personalRepo = AppDataSource.getRepository(Personal);
 
-    // 🔹 Wallet + agence + réseau
     const wallet = await walletRepo.findOne({
       where: { wallet_id: walletId },
       relations: ["agency", "network"],
     });
     if (!wallet) throw new Error("Wallet introuvable");
 
-    // 🔹 Vérifier que le personal appartient à l'agence du wallet
+    // 🔹 Récupérer le personal lié au user_id
+    const personal = await personalRepo.findOne({
+      where: { user: { user_id: user.id } },
+    });
+    if (!personal) throw new Error("Personal introuvable");
+
+    // 🔹 Vérifier que le personal est lié à l’agence du wallet
     const agencyPersonal = await apRepo.findOne({
       where: {
-        personal: { personal_id: user.id },
+        personal: { personal_id: personal.personal_id },
         agency: { agency_id: wallet.agency.agency_id },
       },
       relations: ["agency", "personal"],
     });
+    if (!agencyPersonal) throw new Error("Personal non lié à l'agence du wallet");
 
-    if (!agencyPersonal) {
-      throw new Error("Personal non lié à l'agence du wallet");
-    }
+    if (wallet.balance < amount) throw new Error("Solde insuffisant");
 
-    if (wallet.balance < amount) {
-      throw new Error("Solde insuffisant");
-    }
-
-    // 🔹 Mise à jour du solde
     wallet.balance -= amount;
     await walletRepo.save(wallet);
 
-    // 🔹 Génération USSD
     const secretStr = wallet.secretCode?.toString() ?? "0000";
     const network = wallet.network.name.toLowerCase();
 
@@ -88,7 +88,6 @@ export const TransactionsService = {
       ussdCode = `*152*1*1*${clientPhone}*${amount}*${secretStr}#`;
     }
 
-    // 🔹 Dépôt
     const deposit = depositRepo.create({
       wallet,
       agency_personal: agencyPersonal,
@@ -99,7 +98,6 @@ export const TransactionsService = {
     });
     await depositRepo.save(deposit);
 
-    // 🔹 Transaction
     const transaction = transactionRepo.create({
       wallet,
       agency_personal: agencyPersonal,
@@ -130,6 +128,7 @@ export const TransactionsService = {
     const apRepo = AppDataSource.getRepository(AgencyPersonal);
     const withdrawRepo = AppDataSource.getRepository(Withdraw);
     const transactionRepo = AppDataSource.getRepository(Transaction);
+    const personalRepo = AppDataSource.getRepository(Personal);
 
     const wallet = await walletRepo.findOne({
       where: { wallet_id: walletId },
@@ -137,22 +136,23 @@ export const TransactionsService = {
     });
     if (!wallet) throw new Error("Wallet introuvable");
 
+    const personal = await personalRepo.findOne({
+      where: { user: { user_id: user.id } },
+    });
+    if (!personal) throw new Error("Personal introuvable");
+
     const agencyPersonal = await apRepo.findOne({
       where: {
-        personal: { personal_id: user.id },
+        personal: { personal_id: personal.personal_id },
         agency: { agency_id: wallet.agency.agency_id },
       },
       relations: ["agency", "personal"],
     });
-
-    if (!agencyPersonal) {
-      throw new Error("Personal non lié à l'agence du wallet");
-    }
+    if (!agencyPersonal) throw new Error("Personal non lié à l'agence du wallet");
 
     wallet.balance += amount;
     await walletRepo.save(wallet);
 
-    // 🔹 USSD
     const secretStr = wallet.secretCode?.toString() ?? "0000";
     const network = wallet.network.name.toLowerCase();
 
@@ -201,6 +201,7 @@ export const TransactionsService = {
 
     const walletRepo = AppDataSource.getRepository(Wallet);
     const transactionRepo = AppDataSource.getRepository(Transaction);
+    const managerRepo = AppDataSource.getRepository(Manager);
 
     const wallet = await walletRepo.findOne({
       where: { wallet_id: walletId },
@@ -208,8 +209,13 @@ export const TransactionsService = {
     });
     if (!wallet) throw new Error("Wallet introuvable");
 
-    // 🔹 Vérification du manager propriétaire
-    if (wallet.agency.manager.manager_id !== user.id) {
+    // 🔹 Récupérer le manager lié au user_id
+    const manager = await managerRepo.findOne({
+      where: { user: { user_id: user.id } },
+    });
+    if (!manager) throw new Error("Manager introuvable");
+
+    if (wallet.agency.manager.manager_id !== manager.manager_id) {
       throw new Error("Manager non autorisé sur ce wallet");
     }
 
@@ -244,12 +250,18 @@ export const TransactionsService = {
       throw new Error("Seul un personal peut consulter son historique");
     }
 
+    const personalRepo = AppDataSource.getRepository(Personal);
     const transactionRepo = AppDataSource.getRepository(Transaction);
+
+    const personal = await personalRepo.findOne({
+      where: { user: { user_id: user.id } },
+    });
+    if (!personal) throw new Error("Personal introuvable");
 
     return transactionRepo.find({
       where: {
         agency_personal: {
-          personal: { personal_id: user.id },
+          personal: { personal_id: personal.personal_id },
         },
       },
       relations: ["wallet"],

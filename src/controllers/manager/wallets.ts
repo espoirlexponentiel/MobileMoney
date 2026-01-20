@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { TransactionsService } from "../../services/transactionsServices";
+import { TransactionsService } from "../../services/transactionsServices"; // ✅ corrigé (sans "s")
 import { AuthRequest } from "../../middleware/authRequest";
 import { UserRole } from "../../types/auth";
 
@@ -35,11 +35,11 @@ export const ManagerWalletsController = {
         });
       }
 
-      // ✅ Appel service avec AuthUser correct
+      // ✅ Appel service avec AuthUser (user_id + role)
       const result = await TransactionsService.createTopup(
         { walletId, amount, secretCode },
         {
-          id: req.user.id,
+          id: req.user.id,   // ⚠️ correspond au user_id
           role: userRole,
         }
       );

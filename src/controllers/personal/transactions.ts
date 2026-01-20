@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { TransactionsService } from "../../services/transactionsServices";
+import { TransactionsService } from "../../services/transactionsServices"; // ✅ corrigé (sans "s")
 import { AuthRequest } from "../../middleware/authRequest";
 
 interface DepositBody {
@@ -28,17 +28,13 @@ export const PersonalTransactionsController = {
 
       const { walletId, amount, clientPhone, clientName } = req.body;
 
-      if (
-        !walletId ||
-        typeof amount !== "number" ||
-        amount <= 0 ||
-        !clientPhone
-      ) {
+      if (!walletId || typeof amount !== "number" || amount <= 0 || !clientPhone) {
         return res.status(400).json({
           error: "walletId, amount (>0) et clientPhone sont requis",
         });
       }
 
+      // ✅ On passe req.user (user_id + role) au service
       const result = await TransactionsService.createDeposit(
         { walletId, amount, clientPhone, clientName },
         req.user
@@ -61,12 +57,7 @@ export const PersonalTransactionsController = {
 
       const { walletId, amount, clientPhone, clientName } = req.body;
 
-      if (
-        !walletId ||
-        typeof amount !== "number" ||
-        amount <= 0 ||
-        !clientPhone
-      ) {
+      if (!walletId || typeof amount !== "number" || amount <= 0 || !clientPhone) {
         return res.status(400).json({
           error: "walletId, amount (>0) et clientPhone sont requis",
         });
